@@ -1,0 +1,84 @@
+site:
+  name: "Test Site"
+  id: "test_site"
+  login_url: "http://localhost:8080/login"
+  base_url: "http://localhost:8080"
+
+credentials:
+  provider: "env"
+  env:
+    username_var: "TEST_USERNAME"
+    password_var: "TEST_PASSWORD"
+
+auth:
+  steps:
+    - action: "fill"
+      target:
+        type: "id"
+        value: "username"
+      input: "{username}"
+      description: "Enter username"
+    - action: "fill"
+      target:
+        type: "id"
+        value: "password"
+      input: "{password}"
+      description: "Enter password"
+    - action: "click"
+      target:
+        type: "id"
+        value: "loginBtn"
+      description: "Click login"
+  mfa:
+    type: "none"
+  verify:
+    - action: "wait_for_selector"
+      target:
+        type: "text"
+        value: "Welcome"
+      timeout_seconds: 10
+
+navigation:
+  steps:
+    - action: "click"
+      target:
+        type: "text"
+        value: "Transactions"
+      description: "Go to transactions"
+      wait_after: 1000
+
+extraction:
+  mode: "table"
+  table:
+    container:
+      type: "id"
+      value: "transactions"
+    row_selector: "tr.transaction"
+    columns:
+      - name: "date"
+        selector: "td.date"
+        transform: "parse_date"
+      - name: "description"
+        selector: "td.desc"
+      - name: "amount"
+        selector: "td.amount"
+        transform: "parse_currency"
+
+output:
+  format: "csv"
+  directory: "./output/{site_id}/"
+  filename_template: "{site_id}_{date_pulled}.csv"
+  columns: ["date", "description", "amount", "account", "source"]
+  static_fields:
+    account: "Test Account"
+    source: "test_site"
+
+session:
+  storage_state_path: "./sessions/{site_id}_state.json"
+  reuse_session: true
+  session_ttl_hours: 24
+
+diagnostics:
+  screenshot_on_failure: true
+  capture_accessibility_tree: true
+  output_directory: "./failures/{site_id}/"

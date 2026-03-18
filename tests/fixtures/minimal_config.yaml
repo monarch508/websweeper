@@ -1,0 +1,5 @@
+site:
+  name: "Minimal Test"
+  id: "minimal"
+  login_url: "http://localhost:8080/login"
+  base_url: "http://localhost:8080"

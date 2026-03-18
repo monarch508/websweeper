@@ -1,0 +1,15 @@
+site:
+  name: "Bad Config"
+  # missing id, login_url, base_url
+
+credentials:
+  provider: "magic"
+
+auth:
+  steps:
+    - action: "fly"
+      target:
+        type: "xpath"
+        value: "//div"
+    - action: "fill"
+      # missing target and input

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSweeper Test Page</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        .hidden { display: none; }
+        table { border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        th { background: #f5f5f5; }
+        .error { color: red; }
+        #login-form { max-width: 300px; }
+        #login-form input { display: block; margin: 8px 0; padding: 6px; width: 100%; }
+        #login-form button { margin-top: 12px; padding: 8px 16px; }
+    </style>
+</head>
+<body>
+    <!-- Login Section -->
+    <div id="login-section">
+        <h1>Test Site Login</h1>
+        <form id="login-form">
+            <label for="username">Username</label>
+            <input type="text" id="username" placeholder="Enter username">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Enter password">
+            <button type="submit" id="loginBtn">Sign In</button>
+        </form>
+        <p id="login-error" class="error hidden"></p>
+    </div>
+
+    <!-- Authenticated Section (hidden until login) -->
+    <div id="auth-section" class="hidden">
+        <h1>Welcome</h1>
+        <p>You are logged in as <span id="display-user"></span>.</p>
+        <nav>
+            <a href="#" id="nav-transactions" onclick="showTransactions(); return false;">Transactions</a>
+            |
+            <a href="#" id="nav-statements">Statements</a>
+        </nav>
+
+        <!-- Transactions Table (hidden until nav click) -->
+        <div id="transactions-section" class="hidden">
+            <h2>Recent Transactions</h2>
+            <table id="transactions">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="transaction">
+                        <td class="date">01/15/2024</td>
+                        <td class="desc">CHIPOTLE MEXICAN GRILL</td>
+                        <td class="amount">-$15.42</td>
+                    </tr>
+                    <tr class="transaction">
+                        <td class="date">01/16/2024</td>
+                        <td class="desc">AMAZON.COM</td>
+                        <td class="amount">-$42.99</td>
+                    </tr>
+                    <tr class="transaction">
+                        <td class="date">01/17/2024</td>
+                        <td class="desc">SAFEWAY #1234</td>
+                        <td class="amount">-$87.23</td>
+                    </tr>
+                    <tr class="transaction">
+                        <td class="date">01/18/2024</td>
+                        <td class="desc">PAYROLL DEPOSIT</td>
+                        <td class="amount">$3,245.67</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Simple login simulation
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var username = document.getElementById('username').value;
+            var password = document.getElementById('password').value;
+
+            if (username && password) {
+                // Accept any non-empty credentials
+                document.getElementById('login-section').classList.add('hidden');
+                document.getElementById('auth-section').classList.remove('hidden');
+                document.getElementById('display-user').textContent = username;
+            } else {
+                document.getElementById('login-error').textContent = 'Please enter username and password';
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        });
+
+        function showTransactions() {
+            document.getElementById('transactions-section').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

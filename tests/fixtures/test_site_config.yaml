@@ -1,0 +1,83 @@
+site:
+  name: "Local Test Site"
+  id: "test_local"
+  login_url: "FILE_PATH_PLACEHOLDER"
+  base_url: "FILE_PATH_PLACEHOLDER"
+
+credentials:
+  provider: "env"
+  env:
+    username_var: "TEST_USERNAME"
+    password_var: "TEST_PASSWORD"
+
+auth:
+  steps:
+    - action: "fill"
+      target:
+        type: "id"
+        value: "username"
+      input: "{username}"
+      description: "Enter username"
+    - action: "fill"
+      target:
+        type: "id"
+        value: "password"
+      input: "{password}"
+      description: "Enter password"
+    - action: "click"
+      target:
+        type: "id"
+        value: "loginBtn"
+      description: "Click sign in"
+  mfa:
+    type: "none"
+  verify:
+    - action: "wait_for_selector"
+      target:
+        type: "text"
+        value: "Welcome"
+      timeout_seconds: 5
+
+navigation:
+  steps:
+    - action: "click"
+      target:
+        type: "text"
+        value: "Transactions"
+      description: "Navigate to transactions"
+      wait_after: 500
+    - action: "wait_for_selector"
+      target:
+        type: "id"
+        value: "transactions"
+      timeout_seconds: 5
+      description: "Wait for transactions table"
+
+extraction:
+  mode: "table"
+  table:
+    container:
+      type: "id"
+      value: "transactions"
+    row_selector: "tr.transaction"
+    columns:
+      - name: "date"
+        selector: "td.date"
+      - name: "description"
+        selector: "td.desc"
+      - name: "amount"
+        selector: "td.amount"
+
+output:
+  format: "csv"
+  directory: "./output/{site_id}/"
+  filename_template: "{site_id}_{date_pulled}.csv"
+  columns: ["date", "description", "amount", "account", "source"]
+  static_fields:
+    account: "Test Checking"
+    source: "test_local"
+
+diagnostics:
+  screenshot_on_failure: true
+  capture_accessibility_tree: true
+  output_directory: "./failures/{site_id}/"
