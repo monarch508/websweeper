@@ -131,3 +131,39 @@ The following were explicitly deferred:
 | PII sanitization in diagnostics | Phase 6 | Not needed until sharing diagnostic packages |
 | Session file encryption | Phase 6 | chmod 600 sufficient for personal machine |
 | Transaction deduplication | Phase 5 | Not needed until polling is implemented |
+
+---
+
+## 2026-03-17 — Phase 2: BofA Integration
+
+### D13: SMS MFA with Interactive Code Entry
+
+**Decision:** Support interactive MFA code entry via stdin (terminal mode) or browser window (headed mode). The runner detects whether stdin is available and falls back to waiting for the user to interact with the headed browser directly.
+
+**Rationale:** BofA uses SMS-based MFA, not push notifications as originally assumed. The code must be entered by the user. In terminal contexts (direct CLI invocation), `input()` prompts for the code. When stdin is unavailable (e.g., running through a tool or non-interactive shell), the user enters the code in the visible browser window and clicks Submit themselves.
+
+**Trade-off:** Not fully automated, but combined with "remember this device" and session persistence, MFA is only needed on first login or after session expiry.
+
+---
+
+### D14: `goto` Action for Direct URL Navigation
+
+**Decision:** Added `goto` as a new step action type that navigates the page to a URL.
+
+**Rationale:** With session reuse, loading the `login_url` (public homepage) doesn't redirect to the authenticated accounts page. The runner needs to navigate directly to `secure.bankofamerica.com/myaccounts/brain/redirect.go?source=overview`. A `goto` action allows this without special-casing in the runner.
+
+---
+
+### D15: BofA Session TTL Reality
+
+**Decision:** Set BofA session TTL to 12 hours in config, but documented that actual BofA session validity is shorter and unpredictable.
+
+**Rationale:** BofA's server-side session expiry is not under our control. The `session_ttl_hours` config controls when we proactively re-auth, but BofA may invalidate the session earlier. The runner already handles this gracefully — if the session cookies are stale, the page redirects to the public homepage, auth verification fails, and the diagnostic package is captured. Future improvement: detect the redirect and trigger re-auth automatically instead of failing.
+
+---
+
+### D16: CSS Selectors for BofA Transaction Table
+
+**Decision:** Use CSS class-based selectors for the BofA transaction table (`td.date-cell`, `td.desc-cell .desc-text`, `td.amount-cell`) rather than positional or text-based selectors.
+
+**Rationale:** The BofA transaction table has stable class names on its cells. The `.desc-text` sub-selector within `desc-cell` extracts clean description text without extra metadata. These are more reliable than positional selectors (nth-child) which would break if columns are reordered.

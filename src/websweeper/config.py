@@ -31,7 +31,7 @@ class Target(BaseModel):
 
 
 class Step(BaseModel):
-    action: Literal["fill", "click", "select", "wait", "wait_for_selector"]
+    action: Literal["fill", "click", "select", "wait", "wait_for_selector", "goto"]
     target: Target | None = None
     input: str | None = None
     description: str = ""
@@ -77,6 +77,11 @@ class CredentialConfig(BaseModel):
 class MfaConfig(BaseModel):
     type: Literal["push", "totp", "sms", "none"] = "none"
     wait_seconds: int = 30
+    # SMS MFA: steps to trigger code send, then enter code interactively
+    pre_code_steps: list["Step"] = []       # Steps before code entry (e.g., click "Next" to send SMS)
+    code_input_target: "Target | None" = None  # Where to type the auth code
+    remember_device_target: "Target | None" = None  # "Remember this device" checkbox/radio
+    submit_target: "Target | None" = None   # Submit button after code entry
 
 
 class AuthConfig(BaseModel):

@@ -1,0 +1,135 @@
+site:
+  name: "Bank of America - Checking"
+  id: "bofa_checking"
+  login_url: "https://www.bankofamerica.com/"
+  base_url: "https://www.bankofamerica.com"
+
+credentials:
+  provider: "env"
+  env:
+    username_var: "BOFA_USERNAME"
+    password_var: "BOFA_PASSWORD"
+
+auth:
+  steps:
+    - action: "fill"
+      target:
+        type: "id"
+        value: "oid"
+      input: "{username}"
+      description: "Enter User ID"
+
+    - action: "fill"
+      target:
+        type: "id"
+        value: "pass"
+      input: "{password}"
+      description: "Enter Password"
+
+    - action: "click"
+      target:
+        type: "id"
+        value: "secure-signin-submit"
+      description: "Click Log in"
+
+    - action: "wait"
+      wait_ms: 5000
+      description: "Wait for MFA page to load"
+
+  mfa:
+    type: "sms"
+    wait_seconds: 120
+
+    pre_code_steps:
+      - action: "click"
+        target:
+          type: "id"
+          value: "ah-authcode-select-continue-btn"
+        description: "Click Next to send authorization code"
+      - action: "wait"
+        wait_ms: 3000
+        description: "Wait for code entry page"
+
+    code_input_target:
+      type: "id"
+      value: "ahAuthcodeValidateOTP"
+
+    remember_device_target:
+      type: "id"
+      value: "rememberDevice"
+
+    submit_target:
+      type: "id"
+      value: "ah-authcode-validate-continue-btn"
+
+  verify:
+    - action: "wait_for_selector"
+      target:
+        type: "text"
+        value: "Hello, Sean"
+      timeout_seconds: 30
+      description: "Wait for accounts page to load"
+
+navigation:
+  steps:
+    # Go directly to the account activity page for checking
+    # The adx parameter is account-specific; we use the overview redirect first
+    - action: "goto"
+      target:
+        type: "css"
+        value: "https://secure.bankofamerica.com/myaccounts/brain/redirect.go?source=overview"
+      description: "Navigate to accounts overview"
+      wait_after: 5000
+
+    # Click on Main Checking account link
+    - action: "click"
+      target:
+        type: "css"
+        value: "a[name='DDA_details']"
+      description: "Navigate to checking account details"
+      wait_after: 8000
+
+    # Wait for the transaction table to load
+    - action: "wait_for_selector"
+      target:
+        type: "id"
+        value: "txn-activity-table"
+      timeout_seconds: 15
+      description: "Wait for transaction table"
+
+extraction:
+  mode: "table"
+  table:
+    container:
+      type: "id"
+      value: "txn-activity-table"
+    row_selector: "tbody tr.activity-row"
+    columns:
+      - name: "date"
+        selector: "td.date-cell"
+      - name: "description"
+        selector: "td.desc-cell .desc-text"
+      - name: "type"
+        selector: "td.type-cell"
+      - name: "amount"
+        selector: "td.amount-cell"
+        transform: "parse_currency"
+
+output:
+  format: "csv"
+  directory: "./output/{site_id}/"
+  filename_template: "{site_id}_{date_pulled}.csv"
+  columns: ["date", "description", "type", "amount", "account", "source"]
+  static_fields:
+    account: "Main Checking (5844)"
+    source: "bofa_checking"
+
+session:
+  storage_state_path: "./sessions/{site_id}_state.json"
+  reuse_session: true
+  session_ttl_hours: 12
+
+diagnostics:
+  screenshot_on_failure: true
+  capture_accessibility_tree: true
+  output_directory: "./failures/{site_id}/"

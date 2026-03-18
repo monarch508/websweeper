@@ -1,9 +1,8 @@
 # Current State
 
-**Last updated:** 2026-03-17
+**Last updated:** 2026-03-17 (evening)
 **Version:** 0.1.0
 **Branch:** main
-**Commit:** fd70a78
 
 ---
 
@@ -68,15 +67,41 @@ websweeper finance getchasetransactions [--days N]  (stub)
 
 ---
 
+## Phase 2 Progress: BofA Checking (In Progress)
+
+### Completed
+- [x] BofA checking config with real selectors (`extensions/finance/configs/bofa_checking.yaml`)
+- [x] Login flow: User ID (`#oid`), Password (`#pass`), Log in button (`#secure-signin-submit`)
+- [x] SMS MFA flow: click Next (`#ah-authcode-select-continue-btn`) → enter code (`#ahAuthcodeValidateOTP`) → remember device (`#rememberDevice`) → submit (`#ah-authcode-validate-continue-btn`)
+- [x] Interactive MFA: code entered via stdin (terminal) or browser window (headed mode)
+- [x] Session reuse verified — subsequent headless runs skip login/MFA entirely
+- [x] `getbofastatements` action wired to real config + `run_site()`
+- [x] Transaction extraction working: 50 rows extracted from `#txn-activity-table` with `tbody tr.activity-row` rows
+- [x] CSV output with date, description, type, amount, account, source columns
+- [x] `goto` action added to executor for direct URL navigation
+- [x] Diagnostic repair workflow validated (broken selector → screenshot + a11y tree + error log captured)
+
+### Remaining
+- [ ] PDF statement download (BofA uses JavaScript-triggered downloads, needs `pdf_download` extraction mode)
+- [ ] Statement navigation: Statements & Documents page explored, download links identified but not yet automated
+- [ ] Date parsing for "Processing" entries (currently passed through as-is, not transformed)
+
+### Key Findings
+- **BofA MFA is SMS-based**, not push. The flow is: login → "Get authorization code" page → click Next → enter code → remember device → submit
+- **"Remember this device"** reduces MFA frequency but doesn't eliminate it
+- **Session TTL is shorter than expected** — BofA sessions expire in practice well before the configured 12h. The `storageState` cookies become invalid, and the site redirects to the public homepage with `SMAUTHReason=0`
+- **Transaction table** is `#txn-activity-table` with class `activity-row` for data rows. Columns: date-cell, desc-cell (.desc-text for clean text), type-cell, amount-cell, avail-balance-cell
+- **Pending transactions** show "Processing" instead of a date
+- **Navigation requires `goto` action** — with session reuse, the login_url loads the public homepage, not the accounts page. Must navigate to `secure.bankofamerica.com/myaccounts/brain/redirect.go?source=overview` explicitly
+- **Account link selector**: `a[name='DDA_details']` for checking account on the overview page
+
 ## What's Not Built Yet
 
-### Phase 2: First Real Bank Site
-- [ ] Bank of America checking config (real selectors, real auth flow)
-- [ ] Wire `getbofastatements` action to real config + run_site()
-- [ ] Test against live BofA site with `--debug` mode
-- [ ] MFA push notification handling (currently just a timeout wait)
-- [ ] Validate the diagnostic repair workflow against a real failure
-- [ ] PDF download extraction mode
+### Phase 2 Remaining: Statement Downloads
+- [ ] `pdf_download` extraction mode in base framework
+- [ ] Handle JavaScript-triggered PDF downloads (BofA uses `href="#"` with onclick handlers)
+- [ ] Statement download by date range (year dropdown + expandable categories on Statements & Documents page)
+- [ ] Multiple statement types: Statements, Tax Statements, Notifications, Other Account Documents
 
 ### Phase 3: Financial Extension — Classification
 - [ ] Vendor-to-category mapping engine
@@ -114,6 +139,7 @@ websweeper finance getchasetransactions [--days N]  (stub)
 ## Environment
 
 - **Dev machine:** WSL2 Ubuntu on Windows 11 (HP OMEN, i7-14650HX, 32GB RAM)
+- **WSLg:** Working — headed Playwright browser windows display on Windows desktop
 - **Python:** 3.12.3
 - **Playwright:** 1.58.0
 - **Pydantic:** 2.12.5

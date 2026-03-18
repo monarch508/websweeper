@@ -20,7 +20,7 @@ class ExecutionError(WebSweeperError):
         super().__init__(f"Step failed: {desc} — {cause}")
 
 
-VALID_ACTIONS = {"fill", "click", "select", "wait", "wait_for_selector"}
+VALID_ACTIONS = {"fill", "click", "select", "wait", "wait_for_selector", "goto"}
 VALID_TARGET_TYPES = {"id", "css", "text", "role", "placeholder"}
 
 
@@ -83,7 +83,14 @@ async def execute_step(
     logger.debug(f"Executing step: {desc}")
 
     try:
-        if action == "wait":
+        if action == "goto":
+            url = step.get("target", {}).get("value", "")
+            if not url:
+                url = step.get("input", "")
+            logger.debug(f"Navigating to {url}")
+            await page.goto(url)
+
+        elif action == "wait":
             wait_ms = step.get("wait_ms", 1000)
             await page.wait_for_timeout(wait_ms)
 

@@ -23,6 +23,89 @@ class RunResult:
     diagnostic_path: Path | None = None
 
 
+async def _handle_mfa(page: Page, config: SiteConfig) -> None:
+    """Handle MFA based on type."""
+    mfa = config.auth.mfa
+
+    if mfa.type == "sms":
+        # Execute pre-code steps (e.g., click "Next" to send SMS)
+        if mfa.pre_code_steps:
+            pre_steps = [s.model_dump() for s in mfa.pre_code_steps]
+            logger.info("Executing MFA pre-code steps (sending SMS)")
+            await execute_steps(page, pre_steps)
+
+        # Wait for code input field to appear
+        if mfa.code_input_target:
+            from websweeper.executor import resolve_target
+            code_input = resolve_target(page, mfa.code_input_target.model_dump())
+            await code_input.wait_for(timeout=10000)
+
+            # Try stdin first, fall back to waiting for user to fill the field in the browser
+            code = None
+            try:
+                import sys
+                if sys.stdin.isatty():
+                    print("\n" + "=" * 50)
+                    print("MFA: Authorization code sent to your phone.")
+                    code = input("Enter the code: ").strip()
+                    print("=" * 50 + "\n")
+            except (EOFError, OSError):
+                pass
+
+            if code:
+                await code_input.fill(code)
+            else:
+                # No stdin — wait for user to type code in the browser
+                logger.info("Waiting for MFA code entry in browser window...")
+                print("\n" + "=" * 50)
+                print("MFA: Enter the authorization code in the browser window.")
+                print("Also check 'Yes, remember this device' if desired.")
+                print("Then click Submit in the browser.")
+                print("=" * 50 + "\n")
+
+                # Wait for the submit button to disappear (meaning user submitted)
+                # or for the page to navigate away from the MFA page
+                if mfa.submit_target:
+                    submit = resolve_target(page, mfa.submit_target.model_dump())
+                    # Wait up to wait_seconds for the MFA page to go away
+                    try:
+                        await submit.wait_for(state="hidden", timeout=mfa.wait_seconds * 1000)
+                    except Exception:
+                        pass
+                else:
+                    await page.wait_for_timeout(mfa.wait_seconds * 1000)
+
+                # Skip the automated remember/submit since user did it manually
+                await page.wait_for_timeout(5000)
+                return
+
+        # Check "remember this device" if configured
+        if mfa.remember_device_target:
+            from websweeper.executor import resolve_target
+            remember = resolve_target(page, mfa.remember_device_target.model_dump())
+            await remember.click()
+            logger.info("Checked 'remember this device'")
+
+        # Click submit
+        if mfa.submit_target:
+            from websweeper.executor import resolve_target
+            submit = resolve_target(page, mfa.submit_target.model_dump())
+            await submit.click()
+            logger.info("Submitted MFA code")
+
+        # Wait for MFA to process
+        await page.wait_for_timeout(5000)
+
+    elif mfa.type == "push":
+        wait_ms = mfa.wait_seconds * 1000
+        logger.info(f"Waiting {mfa.wait_seconds}s for push notification approval")
+        await page.wait_for_timeout(wait_ms)
+
+    elif mfa.type == "totp":
+        logger.warning("TOTP MFA not yet implemented")
+        await page.wait_for_timeout(mfa.wait_seconds * 1000)
+
+
 async def _authenticate(page: Page, config: SiteConfig, context: dict[str, str]) -> None:
     """Execute auth steps with credential injection, then verify."""
     auth_steps = [s.model_dump() for s in config.auth.steps]
@@ -30,11 +113,9 @@ async def _authenticate(page: Page, config: SiteConfig, context: dict[str, str])
         logger.info("Executing auth steps")
         await execute_steps(page, auth_steps, context)
 
-    # MFA wait (Phase 1: simple timeout)
+    # MFA handling
     if config.auth.mfa.type != "none":
-        wait_ms = config.auth.mfa.wait_seconds * 1000
-        logger.info(f"Waiting {config.auth.mfa.wait_seconds}s for MFA ({config.auth.mfa.type})")
-        await page.wait_for_timeout(wait_ms)
+        await _handle_mfa(page, config)
 
     # Verify auth succeeded
     verify_steps = [s.model_dump() for s in config.auth.verify]

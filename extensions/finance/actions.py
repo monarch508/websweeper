@@ -1,6 +1,11 @@
 """Finance extension — bank automation actions."""
 
+import asyncio
+from pathlib import Path
+
 import click
+
+CONFIGS_DIR = Path(__file__).parent / "configs"
 
 
 @click.group("finance")
@@ -10,14 +15,31 @@ def finance_group():
 
 
 @finance_group.command()
-@click.option("--start-date", required=True, help="Start date (YYYY-MM format)")
-@click.option("--end-date", help="End date (YYYY-MM format, defaults to current month)")
 @click.option("--debug", is_flag=True, help="Run with visible browser")
-def getbofastatements(start_date: str, end_date: str | None, debug: bool):
-    """Download Bank of America statements for a date range."""
-    # Phase 2: will load configs/bofa_checking.yaml, inject date range, run pipeline
-    click.echo(f"[stub] Would download BofA statements from {start_date} to {end_date or 'current'}")
-    click.echo("This action will be implemented in Phase 2 with real bank configs.")
+@click.option("--dry-run", is_flag=True, help="Login and navigate but don't extract")
+@click.option("--force-auth", is_flag=True, help="Ignore saved session, re-authenticate")
+def getbofastatements(debug: bool, dry_run: bool, force_auth: bool):
+    """Login to Bank of America and extract checking account data."""
+    from websweeper.config import load_config
+    from websweeper.runner import run_site
+
+    config_path = CONFIGS_DIR / "bofa_checking.yaml"
+    if not config_path.exists():
+        click.echo(f"Config not found: {config_path}", err=True)
+        raise SystemExit(1)
+
+    config = load_config(config_path)
+    result = asyncio.run(run_site(config, debug=debug, dry_run=dry_run, force_auth=force_auth))
+
+    if result.status == "success":
+        click.echo(f"Success: {result.rows} rows extracted")
+        if result.output_path:
+            click.echo(f"Output: {result.output_path}")
+    else:
+        click.echo(f"Failed: {result.error}", err=True)
+        if result.diagnostic_path:
+            click.echo(f"Diagnostics: {result.diagnostic_path}", err=True)
+        raise SystemExit(1)
 
 
 @finance_group.command()
@@ -25,6 +47,5 @@ def getbofastatements(start_date: str, end_date: str | None, debug: bool):
 @click.option("--debug", is_flag=True, help="Run with visible browser")
 def getchasetransactions(days: int, debug: bool):
     """Download recent Chase transactions."""
-    # Phase 2 stub
     click.echo(f"[stub] Would download Chase transactions for last {days} days")
-    click.echo("This action will be implemented in Phase 2 with real bank configs.")
+    click.echo("This action will be implemented with real bank configs.")
