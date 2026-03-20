@@ -167,3 +167,27 @@ The following were explicitly deferred:
 **Decision:** Use CSS class-based selectors for the BofA transaction table (`td.date-cell`, `td.desc-cell .desc-text`, `td.amount-cell`) rather than positional or text-based selectors.
 
 **Rationale:** The BofA transaction table has stable class names on its cells. The `.desc-text` sub-selector within `desc-cell` extracts clean description text without extra metadata. These are more reliable than positional selectors (nth-child) which would break if columns are reordered.
+
+---
+
+### D17: Auto Re-Auth on Stale Session
+
+**Decision:** The runner detects server-side session expiry by testing the first navigation step and checking auth verify selectors. If stale, it clears the session file, creates a fresh browser context, and runs full auth.
+
+**Rationale:** BofA expires sessions in ~5-10 minutes idle, much shorter than the configured TTL. Relying only on file-based TTL is insufficient. The runner now proactively tests whether saved cookies are still valid before attempting extraction, and falls back to full auth when they're not.
+
+---
+
+### D18: PDF Downloads via JS Event Dispatch
+
+**Decision:** Use `element.dispatchEvent(new Event('click', { bubbles: true }))` to trigger PDF downloads instead of Playwright's `click()` or `click(force=True)`.
+
+**Rationale:** BofA's statement download links use Vue.js `data-v-trigger` attributes rather than standard `href` or `onclick` handlers. Playwright's `click()` failed because an overlapping card UI element intercepted pointer events. `click(force=True)` bypassed the overlay but didn't trigger Vue's event system. JavaScript `dispatchEvent` triggers the Vue handler which initiates the actual download via XHR, and Playwright's `download` event captures the resulting file.
+
+---
+
+### D19: Watch Mode over Daemon Architecture
+
+**Decision:** Implement session keepalive as a "watch" mode (single long-running process with a polling loop) rather than a daemon with IPC.
+
+**Rationale:** The immediate problem is BofA's ~5-10 minute session timeout killing automated polling. A watch mode solves this by keeping the browser alive and sending keepalive pings between extraction cycles. A full daemon with socket/HTTP IPC would add significant complexity (state management, error handling, client/server protocol) for no immediate benefit — there's currently one user running one site. Watch mode can run in tmux, screen, or as a systemd service. Can upgrade to daemon architecture later if multi-client or multi-site concurrent access is needed.

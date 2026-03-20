@@ -102,14 +102,29 @@ class TableExtractionConfig(BaseModel):
     columns: list[ColumnDef]
 
 
+class PdfDownloadConfig(BaseModel):
+    """Config for downloading PDF files from a page."""
+    # Selector for download links/buttons
+    download_links_selector: str  # CSS selector to find all download links
+    # Where to save downloaded PDFs
+    download_directory: str = "./output/{site_id}/statements/"
+    # Optional: filter link text with a regex pattern
+    link_text_filter: str | None = None
+    # Timeout for each download in seconds
+    download_timeout_seconds: int = 30
+
+
 class ExtractionConfig(BaseModel):
     mode: Literal["table", "pdf_download"] = "table"
     table: TableExtractionConfig | None = None
+    pdf: PdfDownloadConfig | None = None
 
     @model_validator(mode="after")
     def validate_extraction_config(self):
         if self.mode == "table" and self.table is None:
             raise ValueError("Extraction mode 'table' requires 'table' config")
+        if self.mode == "pdf_download" and self.pdf is None:
+            raise ValueError("Extraction mode 'pdf_download' requires 'pdf' config")
         return self
 
 

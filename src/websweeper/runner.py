@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from playwright.async_api import Page, async_playwright
+from playwright.async_api import Page, BrowserContext, async_playwright
 
 from websweeper.config import SiteConfig, load_config
 from websweeper.executor import execute_steps
@@ -64,10 +64,8 @@ async def _handle_mfa(page: Page, config: SiteConfig) -> None:
                 print("=" * 50 + "\n")
 
                 # Wait for the submit button to disappear (meaning user submitted)
-                # or for the page to navigate away from the MFA page
                 if mfa.submit_target:
                     submit = resolve_target(page, mfa.submit_target.model_dump())
-                    # Wait up to wait_seconds for the MFA page to go away
                     try:
                         await submit.wait_for(state="hidden", timeout=mfa.wait_seconds * 1000)
                     except Exception:
@@ -124,6 +122,32 @@ async def _authenticate(page: Page, config: SiteConfig, context: dict[str, str])
         await execute_steps(page, verify_steps, context)
 
 
+async def _check_session_alive(page: Page, config: SiteConfig) -> bool:
+    """Check if the current page is actually authenticated.
+
+    After loading with saved session cookies, the site may redirect to the
+    login page if the session expired server-side. This detects that case
+    by checking the auth verify selectors.
+
+    Returns True if authenticated, False if session is stale.
+    """
+    if not config.auth.verify:
+        # No verify steps configured — assume authenticated
+        return True
+
+    try:
+        verify_steps = [s.model_dump() for s in config.auth.verify]
+        # Use a short timeout — we're just checking, not waiting for login
+        for step in verify_steps:
+            if step.get("timeout_seconds"):
+                step["timeout_seconds"] = 5
+        await execute_steps(page, verify_steps)
+        return True
+    except Exception:
+        logger.info("Session check failed — session appears stale")
+        return False
+
+
 async def run_site(
     config: SiteConfig,
     debug: bool = False,
@@ -134,49 +158,81 @@ async def run_site(
     logger.info(f"Running site: {config.site.name} ({config.site.id})")
 
     # Resolve credentials if auth is configured
-    context: dict[str, str] = {}
+    cred_context: dict[str, str] = {}
     if config.credentials:
         from websweeper.credentials import resolve_credentials
 
         creds = resolve_credentials(config.credentials)
-        context = {"username": creds.username, "password": creds.password}
+        cred_context = {"username": creds.username, "password": creds.password}
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=not debug)
 
-        # Session management: load existing session or create fresh context
+        # Session management
         from websweeper.session import (
             is_session_valid,
             load_or_create_context,
             save_session_state,
+            clear_session,
         )
 
         context_obj = await load_or_create_context(browser, config, force_fresh=force_auth)
         page = await context_obj.new_page()
 
         try:
-            # Navigate to login page
-            logger.info(f"Navigating to {config.site.login_url}")
-            await page.goto(config.site.login_url)
-
-            # Authenticate (skip if valid session exists and not forced)
+            # Determine if we need to authenticate
             needs_auth = force_auth or not is_session_valid(config) or not config.session.reuse_session
+
+            if not needs_auth and config.auth.steps:
+                # Session file exists and is within TTL — try using it
+                # Navigate to a post-login page to verify session is still alive
+                nav_steps = [s.model_dump() for s in config.navigation.steps]
+                if nav_steps:
+                    # Execute the first goto/navigation step to reach an authenticated page
+                    logger.info("Testing session with navigation...")
+                    try:
+                        await execute_steps(page, nav_steps[:1], cred_context)
+                    except Exception:
+                        pass
+                    await page.wait_for_timeout(2000)
+                else:
+                    await page.goto(config.site.login_url)
+                    await page.wait_for_timeout(2000)
+
+                # Check if we're actually authenticated
+                session_alive = await _check_session_alive(page, config)
+                if not session_alive:
+                    logger.warning("Session expired server-side — re-authenticating")
+                    clear_session(config)
+                    # Close stale context and create fresh one
+                    await page.close()
+                    await context_obj.close()
+                    context_obj = await load_or_create_context(browser, config, force_fresh=True)
+                    page = await context_obj.new_page()
+                    needs_auth = True
+
             if config.auth.steps and needs_auth:
-                await _authenticate(page, config, context)
+                # Full authentication flow
+                logger.info(f"Navigating to {config.site.login_url}")
+                await page.goto(config.site.login_url)
+                await _authenticate(page, config, cred_context)
                 await save_session_state(context_obj, config)
                 logger.info("Session saved after successful auth")
 
-            # Navigate
+            # Navigate (may re-execute steps if session was valid)
             nav_steps = [s.model_dump() for s in config.navigation.steps]
             if nav_steps:
-                logger.info("Executing navigation steps")
-                await execute_steps(page, nav_steps, context)
+                # If session was valid and we already ran the first step, skip it
+                steps_to_run = nav_steps if needs_auth else nav_steps[1:] if len(nav_steps) > 1 else []
+                if steps_to_run:
+                    logger.info("Executing navigation steps")
+                    await execute_steps(page, steps_to_run, cred_context)
 
             if dry_run:
                 logger.info("Dry run — skipping extraction")
                 return RunResult(status="success")
 
-            # Extract (MVP 5 will add real extraction)
+            # Extract
             data: list[dict[str, str]] = []
             if config.extraction:
                 logger.info(f"Extracting data (mode: {config.extraction.mode})")
@@ -184,8 +240,12 @@ async def run_site(
                     from websweeper.extractors.table import extract_table
 
                     data = await extract_table(page, config.extraction.table)
+                elif config.extraction.mode == "pdf_download" and config.extraction.pdf:
+                    from websweeper.extractors.pdf_download import download_pdfs
 
-            # Output (MVP 5 will add real output)
+                    data = await download_pdfs(page, config.extraction.pdf, config.site.id)
+
+            # Output
             output_path = None
             if data:
                 from websweeper.output import write_output

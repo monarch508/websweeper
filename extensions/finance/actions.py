@@ -43,6 +43,33 @@ def getbofastatements(debug: bool, dry_run: bool, force_auth: bool):
 
 
 @finance_group.command()
+@click.option("--debug", is_flag=True, help="Run with visible browser")
+@click.option("--force-auth", is_flag=True, help="Ignore saved session, re-authenticate")
+def getbofastatementpdfs(debug: bool, force_auth: bool):
+    """Download Bank of America statement PDFs."""
+    from websweeper.config import load_config
+    from websweeper.runner import run_site
+
+    config_path = CONFIGS_DIR / "bofa_statements.yaml"
+    if not config_path.exists():
+        click.echo(f"Config not found: {config_path}", err=True)
+        raise SystemExit(1)
+
+    config = load_config(config_path)
+    result = asyncio.run(run_site(config, debug=debug, force_auth=force_auth))
+
+    if result.status == "success":
+        click.echo(f"Success: {result.rows} PDFs downloaded")
+        if result.output_path:
+            click.echo(f"Manifest: {result.output_path}")
+    else:
+        click.echo(f"Failed: {result.error}", err=True)
+        if result.diagnostic_path:
+            click.echo(f"Diagnostics: {result.diagnostic_path}", err=True)
+        raise SystemExit(1)
+
+
+@finance_group.command()
 @click.option("--days", default=30, help="Number of days of transactions to fetch")
 @click.option("--debug", is_flag=True, help="Run with visible browser")
 def getchasetransactions(days: int, debug: bool):

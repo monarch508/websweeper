@@ -80,10 +80,13 @@ websweeper finance getchasetransactions [--days N]  (stub)
 - [x] CSV output with date, description, type, amount, account, source columns
 - [x] `goto` action added to executor for direct URL navigation
 - [x] Diagnostic repair workflow validated (broken selector → screenshot + a11y tree + error log captured)
+- [x] Auto re-auth — detects stale server-side sessions, clears cookies, re-authenticates
+- [x] PDF statement download — JS event dispatch triggers BofA's Vue framework, Playwright captures download
+- [x] `getbofastatementpdfs` action — downloads statement PDFs (eStmt_2026-03-09.pdf, 281KB, 14 pages)
+- [x] `pdf_download` extraction mode added to base framework with `PdfDownloadConfig`
 
 ### Remaining
-- [ ] PDF statement download (BofA uses JavaScript-triggered downloads, needs `pdf_download` extraction mode)
-- [ ] Statement navigation: Statements & Documents page explored, download links identified but not yet automated
+- [ ] Watch mode (persistent browser with keepalive for polling)
 - [ ] Date parsing for "Processing" entries (currently passed through as-is, not transformed)
 
 ### Key Findings
@@ -97,11 +100,10 @@ websweeper finance getchasetransactions [--days N]  (stub)
 
 ## What's Not Built Yet
 
-### Phase 2 Remaining: Statement Downloads
-- [ ] `pdf_download` extraction mode in base framework
-- [ ] Handle JavaScript-triggered PDF downloads (BofA uses `href="#"` with onclick handlers)
-- [ ] Statement download by date range (year dropdown + expandable categories on Statements & Documents page)
-- [ ] Multiple statement types: Statements, Tax Statements, Notifications, Other Account Documents
+### Phase 2 Remaining: Watch Mode + Hardening
+- [ ] Watch mode — persistent browser with keepalive pings (prevents session expiry for polling)
+- [ ] Statement download by date range (year dropdown + expandable categories on Statements page)
+- [ ] Auto re-auth within watch mode (detect stale session during keepalive, re-auth)
 
 ### Phase 3: Financial Extension — Classification
 - [ ] Vendor-to-category mapping engine
