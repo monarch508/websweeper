@@ -103,12 +103,21 @@ websweeper finance getchasetransactions [--days N]  (stub)
 - [x] PDF statement download — JS event dispatch triggers BofA's Vue framework, Playwright captures download
 - [x] `getbofastatementpdfs` action — downloads statement PDFs (eStmt_2026-03-09.pdf, 281KB, 14 pages)
 - [x] `pdf_download` extraction mode added to base framework with `PdfDownloadConfig`
-- [x] Watch mode — persistent browser with keepalive polling (`watcher.py`, `watch`/`watch-bofa` commands). **Uncommitted, untested live.**
+- [x] Watch mode — persistent browser with keepalive polling (`watcher.py`, `watch`/`watch-bofa` commands). **Uncommitted, untested live.** Shelved as a feature per D20; see "Auth strategy" below.
+
+### Auth strategy (D20, 2026-05-14)
+
+Plaid and other financial aggregators are explicitly off the table. Pursue DIY techniques in order:
+
+1. **Verify device-trust cookie + session reuse gives MFA-free fresh logins.** Highest priority next step. Inspect `sessions/bofa_checking_state.json`, identify the device-trust cookie and its expiry, then let the session cookies go stale and run `getbofastatements` to observe whether MFA is prompted.
+2. **Check BofA TOTP support.** Config schema already supports `mfa.type: totp`. If BofA offers authenticator-app MFA, adopt it for fully unattended fresh logins.
+3. **Email-code retrieval via Gmail MCP** as a fallback if 1 and 2 do not suffice.
 
 ### Remaining
-- [ ] Live test of watch mode against BofA (MFA on first auth, keepalive across the ~5-10 min session window, re-auth on mid-watch expiry)
-- [ ] Commit watch mode once verified
-- [ ] Transaction deduplication for polling (watch mode currently writes a fresh CSV every cycle)
+- [ ] Verify device-trust cookie behavior (auth-strategy step 1 above)
+- [ ] Inspect BofA security settings for TOTP support (auth-strategy step 2)
+- [ ] Commit pending watch-mode work as shelved-but-preserved, with D20 referenced in the commit message
+- [ ] Transaction deduplication for any polling (relevant only if watch mode is revived)
 - [ ] Date parsing for "Processing" entries (currently passed through as-is, not transformed)
 
 ### Key Findings

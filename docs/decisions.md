@@ -191,3 +191,44 @@ The following were explicitly deferred:
 **Decision:** Implement session keepalive as a "watch" mode (single long-running process with a polling loop) rather than a daemon with IPC.
 
 **Rationale:** The immediate problem is BofA's ~5-10 minute session timeout killing automated polling. A watch mode solves this by keeping the browser alive and sending keepalive pings between extraction cycles. A full daemon with socket/HTTP IPC would add significant complexity (state management, error handling, client/server protocol) for no immediate benefit — there's currently one user running one site. Watch mode can run in tmux, screen, or as a systemd service. Can upgrade to daemon architecture later if multi-client or multi-site concurrent access is needed.
+
+---
+
+## 2026-05-14 — Auth Strategy Re-Examination
+
+### D20: DIY Auth Techniques Only, No Aggregator (Plaid Rejected)
+
+**Status:** Re-affirming a recurring discussion. This conversation has happened before across sessions; this entry exists so it does not need to happen again.
+
+**Decision:** Pursue seamless BofA login via DIY techniques in this order:
+
+1. Verify that the device-trust cookie captured in `storageState` provides MFA-free fresh logins within the trust window.
+2. Check whether BofA offers TOTP authenticator-app MFA. The config schema already supports `mfa.type: totp`, so adopting it would make MFA fully unattended without code changes.
+3. Fall back to email-code retrieval (via the Gmail MCP) if 1 and 2 fail and an unattended fresh login is required.
+
+Financial aggregators (Plaid, Yodlee, MX, Finicity) are **explicitly off the table.**
+
+**Rationale, Plaid rejected:**
+
+1. Prior personal experience with unreliable transaction polling.
+2. Prior personal experience with the connection to BofA repeatedly breaking and requiring re-authorization.
+3. Cost: Plaid is B2B-priced and not viable for individual use.
+4. Third-party API dependency contradicts the project's self-hosted, no-LLM-at-runtime philosophy.
+
+**Evidence basis (not just preference):** Reasons 1 and 2 align with documented Plaid + BofA reliability issues following the 2022-2023 OAuth migration, when retail-side BofA users widely reported intermittent transaction sync failures, missed or duplicated entries, and connections that required re-authorization every few weeks or after BofA security events. The "Plaid is seamless" framing is accurate on the happy path; for BofA specifically the happy path is not the common path. So this rejection is grounded in both lived experience and a broader documented track record, not in taste.
+
+**Rationale, reframe:**
+
+The recurring framing was "watch mode solves BofA's 5-10 min session timeout." On closer inspection, session timeout only matters if you poll more often than the session lives. For a budgeting pipeline (statements monthly, transactions at most daily), the natural model is a scheduled batch run, not a persistent poller. The real friction is MFA on every fresh login, not session expiry. Banks split that into two cookies: a short session cookie and a long device-trust cookie. If `storageState` captures the device-trust cookie, scheduled batch logins skip MFA inside the trust window. That makes watch mode unnecessary for the actual use case.
+
+**What this means for watch mode (D19):**
+
+The implementation stays. It is done, unit-test-clean, and can be revived if a real intraday-polling need ever appears. It is no longer the next thing to test or build on. It is shelved as a feature pending that need.
+
+**Next concrete steps:**
+
+1. Inspect the existing `sessions/bofa_checking_state.json` to confirm a device-trust cookie is captured and identify its expiry.
+2. Trigger the auto-re-auth path by letting the session cookies go stale, then run `getbofastatements` and observe whether MFA is prompted. If MFA is skipped, device trust is doing its job.
+3. Check BofA security settings for authenticator-app MFA support.
+
+**Trade-off:** This relies on bank-internal cookie semantics, which BofA can change unilaterally. If they revoke the device-trust pattern, every scheduled run would prompt MFA again and we would fall back to technique 2 or 3. That is an acceptable failure mode for a manual or weekly cadence; only an intraday-polling need would force watch mode back into play.
