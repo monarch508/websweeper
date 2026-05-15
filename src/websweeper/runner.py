@@ -148,6 +148,34 @@ async def _check_session_alive(page: Page, config: SiteConfig) -> bool:
         return False
 
 
+async def run_extraction(page: Page, config: SiteConfig) -> RunResult:
+    """Run extraction and output on an existing, authenticated, navigated page.
+
+    This is the core extraction logic, separated from browser lifecycle
+    so it can be reused by both run_site() (one-off) and the watcher (polling).
+    """
+    data: list[dict[str, str]] = []
+    if config.extraction:
+        logger.info(f"Extracting data (mode: {config.extraction.mode})")
+        if config.extraction.mode == "table" and config.extraction.table:
+            from websweeper.extractors.table import extract_table
+
+            data = await extract_table(page, config.extraction.table)
+        elif config.extraction.mode == "pdf_download" and config.extraction.pdf:
+            from websweeper.extractors.pdf_download import download_pdfs
+
+            data = await download_pdfs(page, config.extraction.pdf, config.site.id)
+
+    output_path = None
+    if data:
+        from websweeper.output import write_output
+
+        output_path = write_output(data, config.output, config.site.id)
+
+    logger.info(f"Success: {len(data)} rows extracted")
+    return RunResult(status="success", rows=len(data), output_path=output_path)
+
+
 async def run_site(
     config: SiteConfig,
     debug: bool = False,
@@ -232,28 +260,9 @@ async def run_site(
                 logger.info("Dry run — skipping extraction")
                 return RunResult(status="success")
 
-            # Extract
-            data: list[dict[str, str]] = []
-            if config.extraction:
-                logger.info(f"Extracting data (mode: {config.extraction.mode})")
-                if config.extraction.mode == "table" and config.extraction.table:
-                    from websweeper.extractors.table import extract_table
+            # Run extraction
+            return await run_extraction(page, config)
 
-                    data = await extract_table(page, config.extraction.table)
-                elif config.extraction.mode == "pdf_download" and config.extraction.pdf:
-                    from websweeper.extractors.pdf_download import download_pdfs
-
-                    data = await download_pdfs(page, config.extraction.pdf, config.site.id)
-
-            # Output
-            output_path = None
-            if data:
-                from websweeper.output import write_output
-
-                output_path = write_output(data, config.output, config.site.id)
-
-            logger.info(f"Success: {len(data)} rows extracted")
-            return RunResult(status="success", rows=len(data), output_path=output_path)
 
         except Exception as e:
             logger.error(f"Run failed: {e}")

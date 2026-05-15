@@ -140,6 +140,7 @@ class SessionConfig(BaseModel):
     storage_state_path: str = "./sessions/{site_id}_state.json"
     reuse_session: bool = True
     session_ttl_hours: int = 24
+    keepalive_url: str | None = None  # URL to ping for session keepalive in watch mode
 
 
 class DiagnosticsConfig(BaseModel):
