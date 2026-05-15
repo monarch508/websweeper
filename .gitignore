@@ -15,6 +15,9 @@ sessions/
 output/
 failures/
 
+# Exploratory scratch (screenshots, ad-hoc scripts)
+temp/
+
 # IDE
 .vscode/
 .idea/
