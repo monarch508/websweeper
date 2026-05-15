@@ -1,8 +1,24 @@
 # Current State
 
-**Last updated:** 2026-03-17 (evening)
+**Last updated:** 2026-05-14
 **Version:** 0.1.0
 **Branch:** main
+
+---
+
+## Uncommitted Work in Progress
+
+Watch mode is implemented but **not yet committed** and **not yet tested against a live site**. Working tree as of 2026-05-14:
+
+- New: `src/websweeper/watcher.py` (persistent-browser polling loop with keepalive)
+- New: `CLAUDE.md` (this fleshed-out version, replacing the external scaffold)
+- Modified: `src/websweeper/runner.py` (extracted `run_extraction()` for reuse by the watcher)
+- Modified: `src/websweeper/config.py` (`keepalive_url` field on `SessionConfig`)
+- Modified: `src/websweeper/cli.py` (`watch` command + `_parse_duration` helper)
+- Modified: `extensions/finance/actions.py` (`watch-bofa` action)
+- Modified: `extensions/finance/configs/bofa_checking.yaml` (`keepalive_url` set)
+
+83 tests still pass with these changes. Next step is a live watch-mode run against BofA.
 
 ---
 
@@ -60,8 +76,11 @@ Integration tests run against `tests/fixtures/test_page.html` — a local HTML p
 websweeper --help                  # Base CLI
 websweeper run <config> [--debug] [--dry-run] [--force-auth]
 websweeper validate <config>
+websweeper watch <config> [--interval 20m] [--keepalive 3m] [--debug]
 websweeper finance --help          # Extension
-websweeper finance getbofastatements --start-date YYYY-MM [--end-date YYYY-MM]  (stub)
+websweeper finance getbofastatements [--debug] [--dry-run] [--force-auth]
+websweeper finance getbofastatementpdfs [--debug] [--force-auth]
+websweeper finance watch-bofa [--interval 20m] [--keepalive 3m] [--debug]
 websweeper finance getchasetransactions [--days N]  (stub)
 ```
 
@@ -84,9 +103,12 @@ websweeper finance getchasetransactions [--days N]  (stub)
 - [x] PDF statement download — JS event dispatch triggers BofA's Vue framework, Playwright captures download
 - [x] `getbofastatementpdfs` action — downloads statement PDFs (eStmt_2026-03-09.pdf, 281KB, 14 pages)
 - [x] `pdf_download` extraction mode added to base framework with `PdfDownloadConfig`
+- [x] Watch mode — persistent browser with keepalive polling (`watcher.py`, `watch`/`watch-bofa` commands). **Uncommitted, untested live.**
 
 ### Remaining
-- [ ] Watch mode (persistent browser with keepalive for polling)
+- [ ] Live test of watch mode against BofA (MFA on first auth, keepalive across the ~5-10 min session window, re-auth on mid-watch expiry)
+- [ ] Commit watch mode once verified
+- [ ] Transaction deduplication for polling (watch mode currently writes a fresh CSV every cycle)
 - [ ] Date parsing for "Processing" entries (currently passed through as-is, not transformed)
 
 ### Key Findings
@@ -100,10 +122,9 @@ websweeper finance getchasetransactions [--days N]  (stub)
 
 ## What's Not Built Yet
 
-### Phase 2 Remaining: Watch Mode + Hardening
-- [ ] Watch mode — persistent browser with keepalive pings (prevents session expiry for polling)
+### Phase 2 Remaining: Hardening
 - [ ] Statement download by date range (year dropdown + expandable categories on Statements page)
-- [ ] Auto re-auth within watch mode (detect stale session during keepalive, re-auth)
+- [ ] Live verification of watch mode's auto re-auth path (the code path exists in `watcher._ensure_authenticated`; not yet exercised against a real expired session)
 
 ### Phase 3: Financial Extension — Classification
 - [ ] Vendor-to-category mapping engine
@@ -159,6 +180,8 @@ If starting a new session, these files provide full context:
 2. **`docs/decisions.md`** — Why things are the way they are
 3. **`docs/current-state.md`** — This file (what's done, what's next)
 4. **`pyproject.toml`** — Dependencies, entry points, build config
-5. **`src/websweeper/config.py`** — Pydantic models define the config contract
-6. **`src/websweeper/runner.py`** — Orchestrator shows the full execution flow
-7. **`tests/test_integration.py`** — Integration tests show how everything connects
+5. **`CLAUDE.md`** — Conventions, config schema, credential/session/diagnostic patterns
+6. **`src/websweeper/config.py`** — Pydantic models define the config contract
+7. **`src/websweeper/runner.py`** — Orchestrator shows the full execution flow
+8. **`src/websweeper/watcher.py`** — Watch-mode polling loop (uncommitted)
+9. **`tests/test_integration.py`** — Integration tests show how everything connects
