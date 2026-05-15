@@ -111,13 +111,14 @@ Plaid and other financial aggregators are explicitly off the table. The DIY purs
 
 1. Device-trust cookie + session reuse: **blocked.** BofA's account-level "We will verify your identity every time you log in" toggle is ON, which makes BofA require MFA regardless of device recognition. Device-trust cookies refresh correctly; the account setting overrides them.
 2. TOTP authenticator-app MFA: **not offered** on BofA consumer accounts. Confirmed via Security Center and 2FA management captures; no method-management UI exists, keyword scan found no TOTP/authenticator references.
-3. Email-code retrieval via Gmail MCP: **selected.** BofA's "Get code a different way" link on the MFA method-select page switches delivery from SMS to email (monarch508@gmail.com). Gmail MCP is already authenticated and is scopable to a BofA sender filter.
+3. Email-code retrieval via Gmail API: **selected.** BofA's "Get code a different way" link on the MFA method-select page switches delivery from SMS to email (monarch508@gmail.com). The Gmail MCP confirmed delivery during exploration but is a Claude-session integration; the runtime mechanism is the Gmail API via Google's Python client (OAuth 2.0 refresh token, `gmail.readonly`, sender-scoped queries). This keeps Claude / the MCP out of the runtime path, consistent with D02.
 
-The path forward is to implement an email-MFA flow in the framework: on the method-select page click "Get code a different way" before Next, wait for the BofA MFA email via Gmail MCP, parse the 6-digit code from the body, type and submit. This makes scheduled batch runs fully unattended without weakening any account security setting.
+The path forward is to implement an email-MFA flow in the framework: on the method-select page click "Get code a different way" before Next, poll the Gmail API for the BofA MFA email, parse the 6-digit code from the body, type and submit. This makes scheduled batch runs fully unattended without weakening any account security setting.
 
 ### Remaining
-- [ ] Implement email-MFA mode in the config schema and executor (D21)
-- [ ] Wire Gmail MCP read with sender filter and code regex into the MFA flow
+- [ ] Gmail API prereq: GCP project, enable Gmail API, OAuth 2.0 client, consent flow for `gmail.readonly`, persist refresh token (D21)
+- [ ] Implement email-MFA mode in the config schema and executor
+- [ ] Wire Gmail API read (sender filter, body regex, wait timeout) into the MFA flow
 - [ ] Live test of the email-MFA path end-to-end against BofA
 - [ ] Date parsing for "Processing" entries (currently passed through as-is, not transformed)
 
