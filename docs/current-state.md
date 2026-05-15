@@ -103,21 +103,22 @@ websweeper finance getchasetransactions [--days N]  (stub)
 - [x] PDF statement download — JS event dispatch triggers BofA's Vue framework, Playwright captures download
 - [x] `getbofastatementpdfs` action — downloads statement PDFs (eStmt_2026-03-09.pdf, 281KB, 14 pages)
 - [x] `pdf_download` extraction mode added to base framework with `PdfDownloadConfig`
-- [x] Watch mode — persistent browser with keepalive polling (`watcher.py`, `watch`/`watch-bofa` commands). **Uncommitted, untested live.** Shelved as a feature per D20; see "Auth strategy" below.
+- [x] Watch mode — persistent browser with keepalive polling (`watcher.py`, `watch`/`watch-bofa` commands). Shelved as a feature per D21; see "Auth strategy" below.
 
-### Auth strategy (D20, 2026-05-14)
+### Auth strategy (D20 + D21, 2026-05-14)
 
-Plaid and other financial aggregators are explicitly off the table. Pursue DIY techniques in order:
+Plaid and other financial aggregators are explicitly off the table. The DIY pursue-list from D20 was investigated live the same day; results are recorded in D21:
 
-1. **Verify device-trust cookie + session reuse gives MFA-free fresh logins.** Highest priority next step. Inspect `sessions/bofa_checking_state.json`, identify the device-trust cookie and its expiry, then let the session cookies go stale and run `getbofastatements` to observe whether MFA is prompted.
-2. **Check BofA TOTP support.** Config schema already supports `mfa.type: totp`. If BofA offers authenticator-app MFA, adopt it for fully unattended fresh logins.
-3. **Email-code retrieval via Gmail MCP** as a fallback if 1 and 2 do not suffice.
+1. Device-trust cookie + session reuse: **blocked.** BofA's account-level "We will verify your identity every time you log in" toggle is ON, which makes BofA require MFA regardless of device recognition. Device-trust cookies refresh correctly; the account setting overrides them.
+2. TOTP authenticator-app MFA: **not offered** on BofA consumer accounts. Confirmed via Security Center and 2FA management captures; no method-management UI exists, keyword scan found no TOTP/authenticator references.
+3. Email-code retrieval via Gmail MCP: **selected.** BofA's "Get code a different way" link on the MFA method-select page switches delivery from SMS to email (monarch508@gmail.com). Gmail MCP is already authenticated and is scopable to a BofA sender filter.
+
+The path forward is to implement an email-MFA flow in the framework: on the method-select page click "Get code a different way" before Next, wait for the BofA MFA email via Gmail MCP, parse the 6-digit code from the body, type and submit. This makes scheduled batch runs fully unattended without weakening any account security setting.
 
 ### Remaining
-- [ ] Verify device-trust cookie behavior (auth-strategy step 1 above)
-- [ ] Inspect BofA security settings for TOTP support (auth-strategy step 2)
-- [ ] Commit pending watch-mode work as shelved-but-preserved, with D20 referenced in the commit message
-- [ ] Transaction deduplication for any polling (relevant only if watch mode is revived)
+- [ ] Implement email-MFA mode in the config schema and executor (D21)
+- [ ] Wire Gmail MCP read with sender filter and code regex into the MFA flow
+- [ ] Live test of the email-MFA path end-to-end against BofA
 - [ ] Date parsing for "Processing" entries (currently passed through as-is, not transformed)
 
 ### Key Findings

@@ -232,3 +232,40 @@ The implementation stays. It is done, unit-test-clean, and can be revived if a r
 3. Check BofA security settings for authenticator-app MFA support.
 
 **Trade-off:** This relies on bank-internal cookie semantics, which BofA can change unilaterally. If they revoke the device-trust pattern, every scheduled run would prompt MFA again and we would fall back to technique 2 or 3. That is an acceptable failure mode for a manual or weekly cadence; only an intraday-polling need would force watch mode back into play.
+
+---
+
+### D21: Email-MFA via Gmail MCP (Investigation Outcome)
+
+**Date:** 2026-05-14 (evening, same day as D20).
+
+**Status:** Closes out the D20 pursue-list with live evidence.
+
+**Investigation summary.** The three D20 techniques were tested live on 2026-05-14:
+
+1. **Device-trust cookie + session reuse: blocked, not viable.** BofA does roll the device-trust candidate cookies (`ctd`, `MMID`, `gl_prefill`, `BOA_0020`, `FPID`) forward on each successful login. However, the account-level "We will verify your identity every time you log in" toggle is currently ON, and BofA enforces MFA regardless of device recognition when that toggle is on. The cookies are healthy; the account setting overrides them. Turning the toggle off would unblock this path, but the email-MFA path below removes the need to do so.
+2. **TOTP authenticator-app MFA: not offered.** Live navigation to the Security Center and the 2FA management area (via `fsdgoto('securitycenter')` and `fsdgoto('extraSecurity')` JS calls) confirmed BofA exposes no TOTP, no authenticator-app, and no method-management UI for consumer accounts. Visible delivery channels are SMS, phone call, and email only. Keyword scan of the rendered body text found no matches for `authenticator`, `TOTP`, `Google Authenticator`, `Authy`, `app-based`, `time-based`, or `Add a method`. Confidence ~95%.
+3. **Email-code retrieval via Gmail MCP: viable, selected.** On the BofA MFA method-select page, the link **"Get code a different way"** toggles delivery from SMS to email. Email is sent to monarch508@gmail.com (masked by BofA as `m••••8@gmail.com`). The Gmail MCP is already authenticated in the development environment and is scopable to a BofA sender filter so it reads only BofA MFA messages.
+
+**Decision.** The auth path for unattended BofA runs is:
+
+1. Keep "verify every time" ON. No change to the BofA account security posture.
+2. The runner authenticates, then on the MFA method-select page clicks "Get code a different way" to switch delivery to email, then clicks Next.
+3. The runner waits for the BofA MFA email to arrive in Gmail (via the Gmail MCP, scoped by sender), parses the 6-digit code from the body via regex, types it into the code-entry field, and submits.
+4. Scheduled batch runs become fully unattended without weakening any account security setting.
+
+**Watch mode disposition.** Watch mode (D19) is **definitively shelved as a feature.** Email-MFA combined with a normal scheduled batch run covers the actual use case. The implementation (`src/websweeper/watcher.py`, the `watch` and `watch-bofa` CLI commands, the `keepalive_url` config field, and the `run_extraction()` refactor in `runner.py`) stays in the tree as preserved code, ready to revive if a real intraday-polling need ever appears.
+
+**Trade-offs accepted.**
+
+1. Each unattended login pays the cost of one Gmail round-trip (typically seconds). Acceptable.
+2. The pipeline now depends on (a) Gmail MCP staying authenticated and (b) BofA not changing the email-MFA flow. Lower-risk than aggregator dependency, higher-risk than TOTP would have been (if it existed).
+3. The Gmail MCP read scope can and should be constrained to BofA-sender messages, limiting exposure.
+
+**Next concrete steps.**
+
+1. Extend the config schema with an MFA mode that supports email delivery selection (click "Get code a different way" before Next on the method-select page) and a Gmail-fetch hook with sender filter and code regex.
+2. Implement the executor / runner integration that calls the Gmail MCP for code retrieval after triggering email-MFA.
+3. End-to-end live test of email-MFA against BofA on a scheduled run.
+
+**Evidence basis.** Direct evidence from live exploration on 2026-05-14: storageState inspection (58-day-old and fresh state cookie analysis), three live BofA MFA cycles, Playwright captures of the login form, MFA method-select page, "Get code a different way" alternative-delivery view, post-auth landing, Security Center, and the 2FA management area. Sean independently captured `bofa_sec_1`, `bofa_sec_2`, and `bofa_sec_3` screenshots of the security settings and the email-delivery state. Exploratory screenshots and scripts were transient artifacts and are not retained in the repo.
