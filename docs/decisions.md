@@ -270,3 +270,48 @@ The implementation stays. It is done, unit-test-clean, and can be revived if a r
 4. End-to-end live test of email-MFA against BofA on a scheduled run.
 
 **Evidence basis.** Direct evidence from live exploration on 2026-05-14: storageState inspection (58-day-old and fresh state cookie analysis), three live BofA MFA cycles, Playwright captures of the login form, MFA method-select page, "Get code a different way" alternative-delivery view, post-auth landing, Security Center, and the 2FA management area. Sean independently captured `bofa_sec_1`, `bofa_sec_2`, and `bofa_sec_3` screenshots of the security settings and the email-delivery state. Exploratory screenshots and scripts were transient artifacts and are not retained in the repo.
+
+---
+
+## 2026-05-16 — CLI Naming Schema
+
+### D22: Operation-First CLI Command Naming
+
+**Decision.** All cross-site operations follow a verb-resource shape with the site config as the first positional argument:
+
+```
+list-statements      <config>                       # all available, slim records (date + id)
+list-last-statement  <config>                       # most recent only, single record
+pull-last-statement  <config>                       # download most recent
+pull-statement       <config> <statement-id>        # download a specific one
+pull-transactions    <config> [--days-back N]       # transactions, window N days back
+```
+
+`<config>` is the YAML basename without extension (e.g. `bofa_checking`) and resolves against `extensions/finance/configs/`. `<statement-id>` is opaque to the caller and comes from a `list-statements` record; for BofA it will typically be the cycle date string.
+
+Existing site-prefixed actions (`getbofastatements`, `getbofastatementpdfs`, `getchasetransactions`) are retired in favor of the operation-first shape.
+
+**Rationale.**
+
+1. **API-shape over CLI-shape.** The consumption pattern for this project is not yet decided (POC for each site). Making the operations read like API methods (`list_statements(config)`, `pull_transactions(config, days_back=N)`) keeps every downstream wrapper, script, scheduled job, or future web layer using the same uniform invocation surface. Click commands are just one consumer.
+2. **Apples-to-apples across sites.** Each new bank or extension gets the same operation names, not new verbs. `websweeper finance list-statements --help` documents the operation once for every site that implements it. The help index does not grow N sites × M operations.
+3. **Explicit verbs over flag combinatorics.** `list-last-statement` over `list-statements --last` because each verb does exactly one thing. Easier to grep callers by command name and there is no "did I forget the `--last` flag" footgun.
+4. **Singular vs plural matches return cardinality.** `list-statements` returns a list. `list-last-statement` returns one. `pull-statement` operates on one. `pull-transactions` returns many. The Python signatures mirror this (`list[Statement]` vs `Statement` vs `Path`).
+5. **Config as first positional.** Every operation accepts the site identifier in the same slot. Scripts stay uniform across banks. Range and window knobs are flags (`--days-back N`), not positionals.
+
+**Naming conventions.**
+
+1. **Kebab-case at the CLI, snake_case in Python.** Click translates `list_last_statement()` Python functions to `list-last-statement` CLI commands automatically. Hyphens are operators in Python, so the function name has no choice; kebab is the dominant convention across modern CLIs (`git`, `kubectl`, `docker`, `gh`, `cargo`, `npm`) and matches Click's defaults.
+2. **Modifier in the middle, resource at the end.** `list-last-statement` reads as "list the last statement" and matches the Python form `list_last_statement()`.
+3. **Forward-compatible with non-bank extensions.** Future extensions can reuse the shapes: `list-bills`, `pull-last-bill`, `pull-transactions` for any time-series data source.
+
+**Alternatives rejected.**
+
+1. **Site-prefixed (`bofa-list-statements`).** Help index grows by sites times operations; calling code has to know the prefix. The existing pattern is being abandoned.
+2. **Resource-first (`statements list <config>`).** Reads like `kubectl get pods` but forces a Click sub-group per resource, mismatches Python function names, and adds depth without benefit.
+3. **Filter-flag instead of separate verb (`list-statements --last`).** Smaller surface but conflates collection and singleton return. Loses the cardinality-in-the-verb signal.
+4. **Single positional resource (`pull <config> statements --last`).** Flexible but ambiguous which positional is the operation vs the target. Worse for scripted use.
+
+**Watch mode disposition (revisit of D19 and D21).** The email-MFA path from D21 makes scheduled batch runs viable, and `--days-back N` covers incremental-sync needs without a persistent poller. Watch mode is no longer preserved code: it is removed from the tree as part of this iteration. If an intraday-polling need ever appears, the implementation can be reconstructed from history (commit `ef80ba6`).
+
+**Trade-off accepted.** The renamed operations break any external scripts that depended on the old command names. There are no known external consumers (this is still POC), so the rename cost is zero today. As the project matures past POC, locking in this naming schema before downstream consumers form is the right time to do it.

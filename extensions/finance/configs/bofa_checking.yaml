@@ -173,7 +173,6 @@ session:
   storage_state_path: "./sessions/{site_id}_state.json"
   reuse_session: true
   session_ttl_hours: 12
-  keepalive_url: "https://secure.bankofamerica.com/myaccounts/brain/redirect.go?source=overview"
 
 diagnostics:
   screenshot_on_failure: true

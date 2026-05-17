@@ -217,8 +217,9 @@ async def _check_session_alive(page: Page, config: SiteConfig) -> bool:
 async def run_extraction(page: Page, config: SiteConfig) -> RunResult:
     """Run extraction and output on an existing, authenticated, navigated page.
 
-    This is the core extraction logic, separated from browser lifecycle
-    so it can be reused by both run_site() (one-off) and the watcher (polling).
+    Separated from `run_site` so other entry points (e.g. the per-operation
+    finance actions) can drive the same extraction core without going
+    through the one-off authenticate-navigate-extract pipeline.
     """
     data: list[dict[str, str]] = []
     if config.extraction:
