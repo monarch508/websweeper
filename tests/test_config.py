@@ -139,6 +139,157 @@ class TestExtractionValidation:
             )
 
 
+class TestStatementsBlock:
+    """Schema for the four statement operations (D22)."""
+
+    def _site(self):
+        return {"name": "T", "id": "t", "login_url": "http://x", "base_url": "http://x"}
+
+    def test_valid_minimal_statements_block(self):
+        config = SiteConfig(
+            site=self._site(),
+            statements={
+                "listing": {
+                    "year_select": {"type": "id", "value": "yearDropDown"},
+                    "row_link_selector": "a",
+                    "label_regex": r"for (\w+) Statement",
+                },
+            },
+        )
+        assert config.statements is not None
+        assert config.statements.listing.year_select.value == "yearDropDown"
+        assert config.statements.listing.row_text_filter == ""  # default
+        assert config.statements.download.method == "js_dispatch"  # default
+        assert config.statements.download.save_directory == "./output/{site_id}/statements/"
+
+    def test_statements_block_requires_listing(self):
+        with pytest.raises(ValueError):
+            SiteConfig(
+                site=self._site(),
+                statements={"download": {"method": "click"}},
+            )
+
+    def test_listing_requires_year_select(self):
+        with pytest.raises(ValueError):
+            SiteConfig(
+                site=self._site(),
+                statements={
+                    "listing": {
+                        "row_link_selector": "a",
+                        "label_regex": "x",
+                    },
+                },
+            )
+
+    def test_download_method_click_or_js_dispatch(self):
+        config = SiteConfig(
+            site=self._site(),
+            statements={
+                "listing": {
+                    "year_select": {"type": "id", "value": "y"},
+                    "row_link_selector": "a",
+                    "label_regex": "x",
+                },
+                "download": {"method": "click"},
+            },
+        )
+        assert config.statements.download.method == "click"
+
+        with pytest.raises(ValueError):
+            SiteConfig(
+                site=self._site(),
+                statements={
+                    "listing": {
+                        "year_select": {"type": "id", "value": "y"},
+                        "row_link_selector": "a",
+                        "label_regex": "x",
+                    },
+                    "download": {"method": "telepathy"},
+                },
+            )
+
+
+class TestTransactionsBlock:
+    """Schema for `pull-transactions` (D22)."""
+
+    def _site(self):
+        return {"name": "T", "id": "t", "login_url": "http://x", "base_url": "http://x"}
+
+    def _table(self, columns=None):
+        if columns is None:
+            columns = [{"name": "date", "selector": "td.date"}, {"name": "amount", "selector": "td.amt"}]
+        return {
+            "container": {"type": "id", "value": "tbl"},
+            "row_selector": "tr",
+            "columns": columns,
+        }
+
+    def test_minimal_transactions_block(self):
+        config = SiteConfig(
+            site=self._site(),
+            transactions={"table": self._table()},
+        )
+        assert config.transactions is not None
+        assert config.transactions.pending is None
+        assert config.transactions.date_filter is None
+        assert len(config.transactions.table.columns) == 2
+
+    def test_pending_indicator_must_match_a_column(self):
+        with pytest.raises(ValueError, match="indicator_column"):
+            SiteConfig(
+                site=self._site(),
+                transactions={
+                    "table": self._table(),
+                    "pending": {
+                        "indicator_column": "nonexistent",
+                        "indicator_value": "Processing",
+                    },
+                },
+            )
+
+    def test_pending_indicator_matches_existing_column(self):
+        config = SiteConfig(
+            site=self._site(),
+            transactions={
+                "table": self._table(),
+                "pending": {
+                    "indicator_column": "date",
+                    "indicator_value": "Processing",
+                },
+            },
+        )
+        assert config.transactions.pending.indicator_column == "date"
+
+    def test_date_filter_requires_steps(self):
+        with pytest.raises(ValueError):
+            SiteConfig(
+                site=self._site(),
+                transactions={
+                    "table": self._table(),
+                    "date_filter": {"excludes_pending": True},
+                },
+            )
+
+    def test_date_filter_with_steps_and_templates(self):
+        config = SiteConfig(
+            site=self._site(),
+            transactions={
+                "table": self._table(),
+                "date_filter": {
+                    "excludes_pending": True,
+                    "steps": [
+                        {"action": "fill", "target": {"type": "id", "value": "from"}, "input": "{from_date}"},
+                        {"action": "fill", "target": {"type": "id", "value": "to"}, "input": "{to_date}"},
+                        {"action": "click", "target": {"type": "css", "value": "button"}},
+                    ],
+                },
+            },
+        )
+        assert config.transactions.date_filter.excludes_pending is True
+        assert len(config.transactions.date_filter.steps) == 3
+        assert config.transactions.date_filter.steps[0].input == "{from_date}"
+
+
 class TestResolveTemplateVars:
     def test_single_var(self):
         result = resolve_template_vars("{site_id}.csv", {"site_id": "bofa"})

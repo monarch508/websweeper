@@ -167,6 +167,100 @@ class NavigationConfig(BaseModel):
     steps: list[Step] = []
 
 
+# --- Statement operations (list-statements, list-last-statement, pull-statement, pull-last-statement) ---
+
+
+class StatementListingConfig(BaseModel):
+    """How to enumerate statements visible on the statements page.
+
+    The framework iterates the year dropdown, selects each year, waits for the
+    page to re-render, and enumerates download links that match
+    `row_text_filter`. For each link, `label_regex` extracts the month name
+    from the link text. The statement id is then composed as `YYYY-MM`.
+    """
+    year_select: Target  # the year dropdown
+    row_link_selector: str  # CSS for the per-statement download links
+    row_text_filter: str = ""  # optional regex; links whose text matches are kept
+    label_regex: str  # regex with capture group 1 = month name (e.g., r'for (\w+) Statement')
+
+
+class StatementDownloadConfig(BaseModel):
+    """How to trigger download of a single statement.
+
+    `method` is `js_dispatch` for the BofA-style `<a href="#">` link that
+    requires a synthetic click event, or `click` for normal anchor links.
+    """
+    method: Literal["click", "js_dispatch"] = "js_dispatch"
+    save_directory: str = "./output/{site_id}/statements/"
+    timeout_seconds: int = 30
+
+
+class StatementsBlock(BaseModel):
+    """Mechanics for statement-listing and statement-download operations.
+
+    When present on a SiteConfig, the site supports the four statement
+    operations: `list-statements`, `list-last-statement`, `pull-statement`,
+    and `pull-last-statement`.
+    """
+    navigation: NavigationConfig = NavigationConfig()
+    listing: StatementListingConfig
+    download: StatementDownloadConfig = StatementDownloadConfig()
+
+
+# --- Transaction operations (pull-transactions) ---
+
+
+class TransactionsPendingConfig(BaseModel):
+    """How to identify pending (un-posted) rows in a transactions table.
+
+    Pending rows are recognized by a column having a known marker value
+    (e.g. BofA writes the literal string "Processing" in the posting-date
+    column for transactions that have not yet settled).
+    """
+    indicator_column: str  # must match a ColumnDef name in transactions.table.columns
+    indicator_value: str  # case-insensitive substring match
+
+
+class TransactionsDateFilterConfig(BaseModel):
+    """How to apply a posting-date filter on the transactions page.
+
+    Steps run with `{from_date}` and `{to_date}` available as template
+    variables (formatted MM/DD/YYYY). `excludes_pending: true` tells the
+    framework that the filter strips pending rows (BofA's behavior), so the
+    runner must scrape pending separately from the unfiltered view before
+    applying the filter.
+    """
+    excludes_pending: bool = False
+    steps: list[Step]
+
+
+class TransactionsBlock(BaseModel):
+    """Mechanics for the `pull-transactions` operation.
+
+    When present on a SiteConfig, the site supports `pull-transactions
+    [--days-back N]`. The `table` block reuses the existing
+    `TableExtractionConfig` shape; `date_filter` and `pending` are optional
+    and only required when the operation needs a window or pending detection.
+    """
+    navigation: NavigationConfig = NavigationConfig()
+    table: TableExtractionConfig
+    pending: TransactionsPendingConfig | None = None
+    date_filter: TransactionsDateFilterConfig | None = None
+    output: OutputConfig = OutputConfig()
+
+    @model_validator(mode="after")
+    def validate_pending_column(self):
+        if self.pending is not None:
+            column_names = {c.name for c in self.table.columns}
+            if self.pending.indicator_column not in column_names:
+                raise ValueError(
+                    f"pending.indicator_column={self.pending.indicator_column!r} "
+                    f"does not match any column in transactions.table.columns "
+                    f"({sorted(column_names)})"
+                )
+        return self
+
+
 class SiteConfig(BaseModel):
     site: SiteInfo
     credentials: CredentialConfig | None = None
@@ -176,6 +270,10 @@ class SiteConfig(BaseModel):
     output: OutputConfig = OutputConfig()
     session: SessionConfig = SessionConfig()
     diagnostics: DiagnosticsConfig = DiagnosticsConfig()
+    # New operation-specific blocks (D22). Either may be present independently;
+    # a site supports an operation iff its corresponding block is present.
+    statements: StatementsBlock | None = None
+    transactions: TransactionsBlock | None = None
 
 
 # --- Loader ---
