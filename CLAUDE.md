@@ -35,9 +35,11 @@ Each target site is one YAML file validated by `SiteConfig` in `src/websweeper/c
 | `credentials` | `provider: env` + `env.username_var` / `env.password_var` (names of env vars, never values) |
 | `auth` | `steps` (login), `mfa` (type + interactive code-entry targets), `verify` (post-auth check steps) |
 | `navigation` | `steps` to reach the target page after login |
-| `extraction` | `mode: table` or `mode: pdf_download`, with the matching sub-config |
+| `extraction` | `mode: table` or `mode: pdf_download`, with the matching sub-config (legacy; new operations use the per-operation blocks below) |
+| `statements` | Per-operation block for `list-statements`, `list-last-statement`, `pull-statement`, `pull-last-statement`. Contains `navigation`, `listing` (year-select selector, row link selector, label regex), and `download` (click vs JS event dispatch). See D22. |
+| `transactions` | Per-operation block for `pull-transactions [--days-back N]`. Contains `navigation`, `table` (reuses `TableExtractionConfig`), optional `pending` (column + value that marks pending rows), optional `date_filter` (UI step sequence using `{from_date}` / `{to_date}` templates, plus `excludes_pending` flag). See D22. |
 | `output` | CSV `directory`, `filename_template`, `columns`, `static_fields` |
-| `session` | `storage_state_path`, `reuse_session`, `session_ttl_hours`, `keepalive_url` (watch mode) |
+| `session` | `storage_state_path`, `reuse_session`, `session_ttl_hours` |
 | `diagnostics` | screenshot / a11y capture flags, `output_directory` |
 
 **Step actions:** `fill`, `click`, `select`, `wait`, `wait_for_selector`, `goto`. **Target types:** `id`, `css`, `text`, `role`, `placeholder`. Pydantic `model_validator`s enforce cross-field rules (e.g. `fill` requires both a target and an input; `extraction.mode: table` requires a `table` block).
@@ -65,16 +67,16 @@ On failure the runner writes a diagnostic package to `failures/{site_id}/{timest
 - Configs in `extensions/finance/configs/` — currently `bofa_checking.yaml` (transactions) and `bofa_statements.yaml` (PDF downloads).
 - Actions in `extensions/finance/actions.py`, exposed as `websweeper finance <action>`.
 - Extracted CSVs land in `output/{site_id}/`; downloaded PDFs in `output/{site_id}/statements/`. All of `output/`, `sessions/`, `failures/` are gitignored.
-- BofA specifics worth knowing: MFA is SMS (not push), so first auth needs an interactive code entry; server-side sessions expire in ~5-10 min idle; the `login_url` loads the public homepage on session reuse, so a `goto` step to the accounts-overview URL is required; statement-download links are Vue-driven (`data-v-trigger`) and need a JS `dispatchEvent`, not a normal click.
+- BofA specifics worth knowing: MFA is email-based (D21, 2026-05-14). The runner clicks "Get code a different way" on the method-select page to switch delivery from SMS to email, then polls Gmail via the Gmail API. BofA also imposes an ATM-card-and-PIN step-up on the email path (handled by `mfa.post_code_steps`). Server-side sessions expire in ~5-10 min idle; the `login_url` loads the public homepage on session reuse, so a `goto` step to the accounts-overview URL is required; statement-download links are Vue-driven (`data-v-trigger`) and need a JS `dispatchEvent`, not a normal click. BofA dispatches MFA emails from at least two distinct sender addresses (`onlinebanking_ealerts@bankofamerica.com` and `onlinebanking@ealerts.bankofamerica.com`); filter on the parent domain (`bankofamerica.com`) plus a subject substring, not a literal address.
 
-## Watch mode (in progress, uncommitted as of 2026-05-14)
+## Email-MFA runtime
 
-`src/websweeper/watcher.py` keeps one browser alive, authenticates once, and polls extraction on an interval, sending keepalive pings (`session.keepalive_url`) between cycles to outlast short server-side session windows. Exposed as `websweeper watch <config>` and `websweeper finance watch-bofa`. `run_extraction()` was split out of `run_site()` in `runner.py` so both the one-off runner and the watcher share the same extraction core. Implemented and unit-test-clean, but not yet run against a live site.
+`src/websweeper/gmail_auth.py` runs a one-time OAuth consent flow (`websweeper gmail-auth`) and persists a refresh token at `.credentials/gmail_token.json` (gitignored, chmod 600). At runtime, `src/websweeper/gmail_reader.py` polls Gmail with a permissive ANY-style query (sender domain plus a 5-minute trigger window) and applies the strict ALL filter (subject substring + body regex) locally on each candidate. The two-stage match is resilient to bank-side sender and subject drift.
 
 ## Working with this codebase
 
 - **Build in thin vertical slices, not horizontal layers.** Each change should produce something runnable and testable. This is a standing preference, validated through the MVP 0-7 build of Phase 1.
-- **Tests are part of the architecture.** Every module has tests; integration tests run the full pipeline against `tests/fixtures/test_page.html` (no external calls). Run `uv run pytest` (currently 83 passing). Live bank sites are expensive to fail against (lockouts, rate limits), so validate offline first.
+- **Tests are part of the architecture.** Every module has tests; integration tests run the full pipeline against `tests/fixtures/test_page.html` (no external calls). Run `uv run pytest` (currently 92 passing). Live bank sites are expensive to fail against (lockouts, rate limits), so validate offline first.
 - Commands: `uv sync --extra dev`, `uv run playwright install chromium`, `uv run pytest`, `uv run websweeper ...`.
 - Commit messages: one-line imperative, no AI attribution / co-author trailers.
 
@@ -83,6 +85,6 @@ On failure the runner writes a diagnostic package to `failures/{site_id}/{timest
 - `PROJECT_SPEC.md` — full spec authored at handoff (March 2026).
 - `README.md` — README-level summary, project structure, self-healing workflow.
 - `docs/current-state.md` — what's done / in progress / next.
-- `docs/decisions.md` — architectural decisions D01-D19 with rationale.
+- `docs/decisions.md` — architectural decisions D01-D22 with rationale.
 - `docs/user-guide.md` — usage walkthrough.
 - Downstream sibling: `StatementProcessing` (Windows) consumes the PDFs this project downloads.
