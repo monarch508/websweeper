@@ -70,10 +70,14 @@ auth:
         wait_ms: 3000
         description: "Wait for code entry page"
 
-    email_sender_filter: "onlinebanking_ealerts@bankofamerica.com"
+    # BofA uses multiple sender addresses for these MFA codes (observed:
+    # `onlinebanking_ealerts@bankofamerica.com` and
+    # `onlinebanking@ealerts.bankofamerica.com`). Filter on the parent domain
+    # to catch both; the subject filter narrows to MFA codes.
+    email_sender_filter: "bankofamerica.com"
     email_subject_filter: "authorization code"
     email_body_regex: '(?<!\d)(\d{6})(?!\d)'
-    email_timeout_seconds: 90
+    email_timeout_seconds: 300
 
     code_input_target:
       type: "id"
