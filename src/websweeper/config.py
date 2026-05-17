@@ -61,6 +61,11 @@ class SiteInfo(BaseModel):
 class CredentialEnvConfig(BaseModel):
     username_var: str
     password_var: str
+    # Named extra credentials beyond username/password. Map of template-key to
+    # env-var name. The template-key is what auth/MFA steps reference in their
+    # `input:` templates (e.g. `{card_pin}`); the env-var name is the actual
+    # variable read from the environment.
+    extra_vars: dict[str, str] = {}
 
 
 class CredentialConfig(BaseModel):
@@ -75,13 +80,23 @@ class CredentialConfig(BaseModel):
 
 
 class MfaConfig(BaseModel):
-    type: Literal["push", "totp", "sms", "none"] = "none"
+    type: Literal["push", "totp", "sms", "email", "none"] = "none"
     wait_seconds: int = 30
-    # SMS MFA: steps to trigger code send, then enter code interactively
-    pre_code_steps: list["Step"] = []       # Steps before code entry (e.g., click "Next" to send SMS)
+    # Common: steps before code entry (e.g., click "Next" to send SMS, or
+    # click "different way" + Next to send email).
+    pre_code_steps: list["Step"] = []
     code_input_target: "Target | None" = None  # Where to type the auth code
     remember_device_target: "Target | None" = None  # "Remember this device" checkbox/radio
     submit_target: "Target | None" = None   # Submit button after code entry
+    # Common: steps to execute AFTER filling the code, BEFORE submit. Used for
+    # step-up checks such as the ATM-card-and-PIN gate BofA imposes on the
+    # email-MFA path. Templates like `{card_pin}` resolve via credentials.
+    post_code_steps: list["Step"] = []
+    # Email-MFA only: Gmail polling parameters.
+    email_sender_filter: str | None = None
+    email_subject_filter: str | None = None
+    email_body_regex: str | None = None
+    email_timeout_seconds: int = 60
 
 
 class AuthConfig(BaseModel):

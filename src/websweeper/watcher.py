@@ -38,7 +38,11 @@ async def watch_site(
         from websweeper.credentials import resolve_credentials
 
         creds = resolve_credentials(config.credentials)
-        cred_context = {"username": creds.username, "password": creds.password}
+        cred_context = {
+            "username": creds.username,
+            "password": creds.password,
+            **creds.extras,
+        }
 
     shutdown_requested = False
     total_polls = 0

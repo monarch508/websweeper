@@ -44,8 +44,8 @@ def resolve_target(page: Page, target: dict) -> Locator:
     elif target_type == "text":
         return page.get_by_text(value)
     elif target_type == "role":
-        role = target.get("role", value)
-        name = target.get("name", value)
+        role = target.get("role") or value
+        name = target.get("name") or value
         return page.get_by_role(role, name=name)
     elif target_type == "placeholder":
         return page.get_by_placeholder(value)

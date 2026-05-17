@@ -23,7 +23,7 @@ class RunResult:
     diagnostic_path: Path | None = None
 
 
-async def _handle_mfa(page: Page, config: SiteConfig) -> None:
+async def _handle_mfa(page: Page, config: SiteConfig, context: dict[str, str]) -> None:
     """Handle MFA based on type."""
     mfa = config.auth.mfa
 
@@ -32,7 +32,7 @@ async def _handle_mfa(page: Page, config: SiteConfig) -> None:
         if mfa.pre_code_steps:
             pre_steps = [s.model_dump() for s in mfa.pre_code_steps]
             logger.info("Executing MFA pre-code steps (sending SMS)")
-            await execute_steps(page, pre_steps)
+            await execute_steps(page, pre_steps, context)
 
         # Wait for code input field to appear
         if mfa.code_input_target:
@@ -94,6 +94,9 @@ async def _handle_mfa(page: Page, config: SiteConfig) -> None:
         # Wait for MFA to process
         await page.wait_for_timeout(5000)
 
+    elif mfa.type == "email":
+        await _handle_email_mfa(page, config, context)
+
     elif mfa.type == "push":
         wait_ms = mfa.wait_seconds * 1000
         logger.info(f"Waiting {mfa.wait_seconds}s for push notification approval")
@@ -102,6 +105,69 @@ async def _handle_mfa(page: Page, config: SiteConfig) -> None:
     elif mfa.type == "totp":
         logger.warning("TOTP MFA not yet implemented")
         await page.wait_for_timeout(mfa.wait_seconds * 1000)
+
+
+async def _handle_email_mfa(page: Page, config: SiteConfig, context: dict[str, str]) -> None:
+    """Email-MFA path: trigger send, poll Gmail for the code, fill, run any
+    step-up (e.g. ATM card + PIN), submit."""
+    import time
+
+    from websweeper.executor import resolve_target
+    from websweeper.gmail_reader import wait_for_code
+
+    mfa = config.auth.mfa
+
+    required = ("email_sender_filter", "email_body_regex", "code_input_target")
+    for field_name in required:
+        if not getattr(mfa, field_name):
+            raise RuntimeError(
+                f"Email MFA requires '{field_name}' to be set on mfa config"
+            )
+
+    # Capture timestamp BEFORE the email-triggering steps so we don't miss a
+    # message that arrives moments after we click Next.
+    not_before = int(time.time())
+
+    if mfa.pre_code_steps:
+        pre_steps = [s.model_dump() for s in mfa.pre_code_steps]
+        logger.info("Executing email-MFA pre-code steps (triggering send)")
+        await execute_steps(page, pre_steps, context)
+
+    logger.info(
+        "Polling Gmail for MFA code (sender=%s, timeout=%ds)",
+        mfa.email_sender_filter, mfa.email_timeout_seconds,
+    )
+    code = wait_for_code(
+        sender_filter=mfa.email_sender_filter,
+        body_regex=mfa.email_body_regex,
+        subject_filter=mfa.email_subject_filter,
+        timeout_seconds=mfa.email_timeout_seconds,
+        not_before_unix=not_before,
+    )
+    if code is None:
+        raise RuntimeError(
+            f"Timed out waiting for email-MFA code after {mfa.email_timeout_seconds}s. "
+            f"Check Gmail filter (sender='{mfa.email_sender_filter}', "
+            f"subject='{mfa.email_subject_filter}') and BofA delivery."
+        )
+
+    code_input = resolve_target(page, mfa.code_input_target.model_dump())
+    await code_input.wait_for(timeout=10000)
+    await code_input.fill(code)
+    logger.info("Filled email-MFA code")
+
+    # Step-up gate (e.g., BofA ATM card radio + PIN on the email-MFA path).
+    if mfa.post_code_steps:
+        post_steps = [s.model_dump() for s in mfa.post_code_steps]
+        logger.info("Executing email-MFA post-code steps (step-up gate)")
+        await execute_steps(page, post_steps, context)
+
+    if mfa.submit_target:
+        submit = resolve_target(page, mfa.submit_target.model_dump())
+        await submit.click()
+        logger.info("Submitted email-MFA")
+
+    await page.wait_for_timeout(5000)
 
 
 async def _authenticate(page: Page, config: SiteConfig, context: dict[str, str]) -> None:
@@ -113,7 +179,7 @@ async def _authenticate(page: Page, config: SiteConfig, context: dict[str, str])
 
     # MFA handling
     if config.auth.mfa.type != "none":
-        await _handle_mfa(page, config)
+        await _handle_mfa(page, config, context)
 
     # Verify auth succeeded
     verify_steps = [s.model_dump() for s in config.auth.verify]
@@ -191,7 +257,11 @@ async def run_site(
         from websweeper.credentials import resolve_credentials
 
         creds = resolve_credentials(config.credentials)
-        cred_context = {"username": creds.username, "password": creds.password}
+        cred_context = {
+            "username": creds.username,
+            "password": creds.password,
+            **creds.extras,
+        }
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=not debug)

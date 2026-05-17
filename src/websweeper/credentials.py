@@ -2,7 +2,7 @@
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -21,6 +21,7 @@ class CredentialError(WebSweeperError):
 class Credentials:
     username: str
     password: str
+    extras: dict[str, str] = field(default_factory=dict)
 
 
 def resolve_credentials(config: CredentialConfig) -> Credentials:
@@ -57,5 +58,16 @@ def _resolve_env_credentials(env_config) -> Credentials:
             f"Set it in your .env file or shell environment."
         )
 
-    logger.debug(f"Credentials resolved from env vars: {username_var}, {password_var}")
-    return Credentials(username=username, password=password)
+    extras: dict[str, str] = {}
+    for template_key, var_name in env_config.extra_vars.items():
+        value = os.environ.get(var_name, "")
+        if not value:
+            raise CredentialError(
+                f"Environment variable '{var_name}' (extra credential '{template_key}') "
+                f"is not set or empty. Set it in your .env file or shell environment."
+            )
+        extras[template_key] = value
+
+    resolved_vars = [username_var, password_var] + list(env_config.extra_vars.values())
+    logger.debug(f"Credentials resolved from env vars: {', '.join(resolved_vars)}")
+    return Credentials(username=username, password=password, extras=extras)

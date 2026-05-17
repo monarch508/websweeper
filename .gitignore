@@ -18,6 +18,9 @@ failures/
 # Exploratory scratch (screenshots, ad-hoc scripts)
 temp/
 
+# OAuth tokens and other long-lived credentials
+.credentials/
+
 # IDE
 .vscode/
 .idea/

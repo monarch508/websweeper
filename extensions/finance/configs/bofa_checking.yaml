@@ -9,6 +9,8 @@ credentials:
   env:
     username_var: "BOFA_USERNAME"
     password_var: "BOFA_PASSWORD"
+    extra_vars:
+      card_pin: "BOFA_ATM_PIN"
 
 auth:
   steps:
@@ -37,26 +39,65 @@ auth:
       description: "Wait for MFA page to load"
 
   mfa:
-    type: "sms"
+    # Email-MFA path: BofA delivers code to monarch508@gmail.com when the user
+    # clicks "Get code a different way" on the method-select page. The
+    # framework polls Gmail via the Gmail API, extracts the code, and fills it.
+    # The email path triggers an additional ATM-card-and-PIN step-up; we
+    # handle that with post_code_steps.
+    type: "email"
     wait_seconds: 120
 
     pre_code_steps:
+      # Switch delivery from default SMS to email. Multiple elements carry
+      # this text (the real link plus hidden help-panel labels), so target
+      # by ARIA role to disambiguate to the <a> link.
+      - action: "click"
+        target:
+          type: "role"
+          value: "Get code a different way"
+          role: "link"
+        description: "Switch MFA delivery to email"
+      - action: "wait"
+        wait_ms: 2500
+        description: "Wait for delivery toggle to settle"
+      # Click Next to dispatch the email
       - action: "click"
         target:
           type: "id"
           value: "ah-authcode-select-continue-btn"
-        description: "Click Next to send authorization code"
+        description: "Click Next to send authorization code via email"
       - action: "wait"
         wait_ms: 3000
         description: "Wait for code entry page"
+
+    email_sender_filter: "onlinebanking_ealerts@bankofamerica.com"
+    email_subject_filter: "authorization code"
+    email_body_regex: '(?<!\d)(\d{6})(?!\d)'
+    email_timeout_seconds: 90
 
     code_input_target:
       type: "id"
       value: "ahAuthcodeValidateOTP"
 
-    remember_device_target:
-      type: "id"
-      value: "rememberDevice"
+    # Step-up: after the code is filled BofA also requires picking an ATM card
+    # and entering its PIN before Submit will accept. The auth-code field is
+    # also type=password (masked), so the PIN field needs its real ID rather
+    # than a generic [type='password'] selector.
+    post_code_steps:
+      - action: "click"
+        target:
+          type: "css"
+          value: "input[type='radio']"
+        description: "Select ATM/debit card (only option)"
+      - action: "wait"
+        wait_ms: 800
+        description: "Settle after card selection"
+      - action: "fill"
+        target:
+          type: "id"
+          value: "ahAuthcodeValidatePIN"
+        input: "{card_pin}"
+        description: "Enter ATM/debit PIN"
 
     submit_target:
       type: "id"

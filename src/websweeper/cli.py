@@ -92,6 +92,18 @@ def _parse_duration(value: str) -> int:
         return int(value)
 
 
+@cli.command("gmail-auth")
+def gmail_auth():
+    """Run the one-time Gmail OAuth consent flow and save a refresh token.
+
+    Requires GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in .env.
+    Opens a browser for consent, then writes .credentials/gmail_token.json.
+    """
+    from websweeper.gmail_auth import run_consent_flow
+
+    run_consent_flow()
+
+
 def _register_extensions():
     """Discover and register extension CLI groups via entry points."""
     from importlib.metadata import entry_points
